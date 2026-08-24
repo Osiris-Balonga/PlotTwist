@@ -16,4 +16,31 @@ PlotTwist is a Chrome extension that enriches Netflix and Prime Video with progr
 
 ## Development
 
-Each application will add its development commands with its first functional milestone.
+Install dependencies once:
+
+```bash
+npm install
+```
+
+Start the API with a DeepSeek key:
+
+```bash
+set DEEPSEEK_API_KEY=your_key
+npm run dev -w @plottwist/api
+```
+
+Build the Chrome extension:
+
+```bash
+npm run build -w @plottwist/extension
+```
+
+Load `apps/extension/dist` as an unpacked extension from `chrome://extensions` with Developer mode enabled. The development proxy defaults to `http://localhost:8787`.
+
+Run the available validation suite:
+
+```bash
+npm test
+npm run check
+npm run build
+```
