@@ -13,7 +13,7 @@ const manifest: ManifestV3Export = {
     type: "module"
   },
   permissions: ["storage"],
-  host_permissions: ["https://*.netflix.com/*", "https://*.primevideo.com/*"],
+  host_permissions: ["https://*.netflix.com/*", "https://*.primevideo.com/*", "http://localhost:8787/*"],
   content_scripts: [
     {
       matches: ["https://*.netflix.com/*", "https://*.primevideo.com/*"],
@@ -24,4 +24,3 @@ const manifest: ManifestV3Export = {
 };
 
 export default manifest;
-
