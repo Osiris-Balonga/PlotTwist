@@ -5,7 +5,8 @@ import type { ViewingContext } from "../shared/viewing-context";
 
 const API_URL = "http://localhost:8787/v1/quiz";
 const CONTEXT_KEY = "activeViewingContext";
-const DELIVERY_STATE_KEY = "quizDeliveryState:v1";
+const DELIVERY_STATE_KEY = "quizDeliveryState:v2";
+const LEGACY_DELIVERY_STATE_KEY = "quizDeliveryState:v1";
 const INSTALLATION_ID_KEY = "anonymousInstallationId:v1";
 
 type DeliveryState = {
@@ -15,7 +16,7 @@ type DeliveryState = {
 };
 
 type BackgroundMessage = {
-  type?: "VIEWING_CONTEXT_UPDATED" | "CHECK_QUIZ_ELIGIBILITY" | "REQUEST_QUIZ";
+  type?: "VIEWING_CONTEXT_UPDATED" | "CHECK_QUIZ_ELIGIBILITY" | "CLAIM_QUIZ_PRESENTATION" | "REQUEST_QUIZ";
   context?: ViewingContext;
   request?: QuizRequest;
 };
@@ -46,8 +47,17 @@ function normalizeState(value: unknown): DeliveryState {
 }
 
 async function getState(): Promise<DeliveryState> {
-  const stored = await chrome.storage.local.get(DELIVERY_STATE_KEY);
-  return normalizeState(stored[DELIVERY_STATE_KEY]);
+  const stored = await chrome.storage.local.get([DELIVERY_STATE_KEY, LEGACY_DELIVERY_STATE_KEY]);
+  if (stored[DELIVERY_STATE_KEY]) return normalizeState(stored[DELIVERY_STATE_KEY]);
+
+  const legacy = normalizeState(stored[LEGACY_DELIVERY_STATE_KEY]);
+  const migrated = {
+    ...legacy,
+    spoiledEpisodeKeys: [...new Set(legacy.spoiledEpisodeKeys.map((key) => key.replace(/:s\d+:e\d+$/i, "")))],
+    dailyCount: 0
+  };
+  await chrome.storage.local.set({ [DELIVERY_STATE_KEY]: migrated });
+  return migrated;
 }
 
 function getEligibility(state: DeliveryState, episodeKey: string): QuizEligibility {
@@ -127,10 +137,21 @@ async function prepareQuiz(request: QuizRequest): Promise<QuizResult> {
       await chrome.storage.local.set({ [cacheKey]: quiz });
     }
 
+    return { quiz };
+  });
+}
+
+async function claimQuizPresentation(context: ViewingContext): Promise<QuizEligibility> {
+  return withStorageLock(async () => {
+    const episodeKey = buildEpisodeKey(context);
+    const state = await getState();
+    const eligibility = getEligibility(state, episodeKey);
+    if (!eligibility.eligible) return eligibility;
+
     state.spoiledEpisodeKeys = [...new Set([...state.spoiledEpisodeKeys, episodeKey])];
     state.dailyCount += 1;
     await chrome.storage.local.set({ [DELIVERY_STATE_KEY]: state });
-    return { quiz };
+    return { eligible: true };
   });
 }
 
@@ -140,6 +161,9 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage) => {
   }
   if (message.type === "CHECK_QUIZ_ELIGIBILITY" && message.context) {
     return withStorageLock(async () => getEligibility(await getState(), buildEpisodeKey(message.context!)));
+  }
+  if (message.type === "CLAIM_QUIZ_PRESENTATION" && message.context) {
+    return claimQuizPresentation(message.context);
   }
   if (message.type === "REQUEST_QUIZ" && message.request) return prepareQuiz(message.request);
   return undefined;
