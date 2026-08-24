@@ -1,16 +1,14 @@
 import type { Quiz } from "../../shared/quiz";
 import type { Platform } from "../../shared/viewing-context";
-import { ERROR_DISMISS_MS, MAX_QUIZ_REQUEST_ATTEMPTS, REVEAL_DURATION_MS } from "../config";
+import { SKELETON_DURATION_MS } from "../config";
 import { getUiCopy } from "./copy";
 
 const ROOT_ID = "plottwist-extension-root";
 
-type QuizResult = { quiz?: Quiz; error?: string };
-
 export function mountOverlay(
   platform: Platform,
   locale: string,
-  requestQuiz: () => Promise<QuizResult>,
+  quiz: Quiz,
   onComplete: () => void
 ): void {
   if (document.getElementById(ROOT_ID)) return;
@@ -33,8 +31,14 @@ export function mountOverlay(
         --choice-hover: #353535;
         --muted: #b8b8b8;
         --panel: #181818;
-        --success: #32a866;
-        --danger: #e24444;
+        --success: #2f9e5f;
+        --danger: #ce3535;
+        --skeleton-base: #292929;
+        --skeleton-shine: #3a3a3a;
+        --close-bg: rgb(24 24 24 / 92%);
+        --close-hover: #343434;
+        --scroll-thumb: #5b5b5b;
+        --scroll-thumb-hover: #777;
         --panel-radius: 4px;
         --choice-radius: 2px;
         --panel-padding: 28px;
@@ -56,8 +60,14 @@ export function mountOverlay(
         --choice-hover: #223b53;
         --muted: #b5c7d9;
         --panel: #0f1b2a;
-        --success: #39b979;
-        --danger: #f05656;
+        --success: #319c68;
+        --danger: #d84747;
+        --skeleton-base: #18283a;
+        --skeleton-shine: #29435c;
+        --close-bg: rgb(24 40 58 / 94%);
+        --close-hover: #2b4964;
+        --scroll-thumb: #31516d;
+        --scroll-thumb-hover: #44769b;
         --panel-radius: 10px;
         --choice-radius: 6px;
         --panel-padding: 30px;
@@ -71,14 +81,30 @@ export function mountOverlay(
         border-radius: var(--panel-radius);
         background: var(--panel);
         box-shadow: 0 8px 24px rgb(0 0 0 / 48%);
+        scrollbar-color: var(--scroll-thumb) transparent;
+        scrollbar-width: thin;
       }
+      .panel::-webkit-scrollbar { width: 8px; }
+      .panel::-webkit-scrollbar-track { background: transparent; }
+      .panel::-webkit-scrollbar-thumb {
+        border: 2px solid var(--panel);
+        border-radius: 999px;
+        background: var(--scroll-thumb);
+      }
+      .panel::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
       .brand {
         display: flex;
         align-items: center;
         gap: 10px;
         margin-bottom: 10px;
       }
-      .brand img { width: 28px; height: 28px; border-radius: 7px; }
+      .brand img {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        outline: 1px solid rgb(255 255 255 / 10%);
+        outline-offset: -1px;
+      }
       .backdrop[data-platform="prime"] .brand { gap: 12px; margin-bottom: 12px; }
       .backdrop[data-platform="prime"] .brand img { width: 30px; height: 30px; border-radius: 8px; }
       .eyebrow {
@@ -96,7 +122,7 @@ export function mountOverlay(
         text-wrap: balance;
       }
       .body { min-width: 0; margin-top: 18px; }
-      .hint, .question, .reveal, .status {
+      .hint, .question, .reveal {
         overflow-wrap: anywhere;
         text-wrap: pretty;
       }
@@ -113,46 +139,34 @@ export function mountOverlay(
         font-weight: 600;
         line-height: 1.45;
       }
-      .status {
-        margin: 0;
-        color: var(--muted);
-        font-size: 15px;
-        line-height: 1.5;
-      }
       .choices { display: grid; gap: 10px; margin-top: 20px; }
-      .choice, .retry {
+      .choice {
         min-height: 48px;
+        padding: 12px 14px;
         border: 0;
         border-radius: var(--choice-radius);
         background: var(--choice);
         color: inherit;
         font: 600 16px/1.35 inherit;
+        text-align: start;
         cursor: pointer;
-        transition-property: background-color, box-shadow, opacity, transform;
+        transition-property: background-color, opacity, transform;
         transition-duration: 180ms;
         transition-timing-function: cubic-bezier(.2, 0, 0, 1);
       }
-      .choice { padding: 12px 14px; text-align: start; }
-      .retry { margin-top: 18px; padding: 12px 18px; }
-      .choice:hover, .retry:hover { background: var(--choice-hover); }
-      .choice:active, .retry:active { transform: scale(.96); }
-      .choice:focus-visible, .retry:focus-visible {
-        outline: 2px solid var(--accent);
+      .choice:hover { background: var(--choice-hover); }
+      .choice:active { transform: scale(.96); }
+      .choice:focus-visible {
+        outline: 2px solid #fff;
         outline-offset: 3px;
       }
-      .choice:disabled { cursor: default; opacity: .62; }
-      .choice[data-selected="true"] {
-        box-shadow: inset 0 0 0 2px var(--accent);
-        opacity: 1;
-      }
+      .choice:disabled:not([data-result]) { cursor: default; opacity: .5; }
       .choice[data-result="correct"] {
-        background: color-mix(in srgb, var(--success) 30%, var(--choice));
-        box-shadow: inset 0 0 0 2px var(--success);
+        background: color-mix(in srgb, var(--success) 62%, var(--choice));
         opacity: 1;
       }
       .choice[data-result="incorrect"] {
-        background: color-mix(in srgb, var(--danger) 34%, var(--choice));
-        box-shadow: inset 0 0 0 2px var(--danger);
+        background: color-mix(in srgb, var(--danger) 66%, var(--choice));
         opacity: 1;
       }
       .feedback {
@@ -161,8 +175,8 @@ export function mountOverlay(
         font-size: 18px;
         font-weight: 700;
       }
-      .feedback[data-result="correct"] { color: var(--success); }
-      .feedback[data-result="incorrect"] { color: var(--danger); }
+      .feedback[data-result="correct"] { color: #58c584; }
+      .feedback[data-result="incorrect"] { color: #f06a6a; }
       .reveal {
         margin: 0;
         color: #fff;
@@ -175,15 +189,88 @@ export function mountOverlay(
         transition-timing-function: cubic-bezier(.2, 0, 0, 1);
       }
       .reveal[data-visible="true"] { opacity: 1; transform: translateY(0); }
+      .close-overlay {
+        position: fixed;
+        top: max(22px, env(safe-area-inset-top));
+        right: max(22px, env(safe-area-inset-right));
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: var(--close-bg);
+        box-shadow: 0 2px 8px rgb(0 0 0 / 38%);
+        color: #fff;
+        cursor: pointer;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: scale(.25);
+        filter: blur(4px);
+        transition-property: background-color, opacity, transform, filter;
+        transition-duration: 180ms;
+        transition-timing-function: cubic-bezier(.2, 0, 0, 1);
+      }
+      .close-overlay[data-visible="true"] {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: scale(1);
+        filter: blur(0);
+      }
+      .close-overlay:hover { background: var(--close-hover); }
+      .close-overlay:active { transform: scale(.96); }
+      .close-overlay:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+      .close-overlay svg { width: 22px; height: 22px; }
+      .skeleton-stack { display: grid; gap: 9px; }
+      .skeleton-block {
+        display: block;
+        height: 13px;
+        border-radius: max(2px, calc(var(--choice-radius) - 2px));
+        background: linear-gradient(90deg, var(--skeleton-base) 0%, var(--skeleton-shine) 48%, var(--skeleton-base) 100%);
+        background-size: 220% 100%;
+        animation: skeleton-wave 800ms ease-in-out infinite;
+      }
+      .skeleton-block[data-width="hint"] { width: 58%; }
+      .skeleton-block[data-width="question"] { width: 96%; height: 17px; }
+      .skeleton-block[data-width="question-short"] { width: 72%; height: 17px; }
+      .skeleton-choice { height: 48px; border-radius: var(--choice-radius); }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @keyframes skeleton-wave {
+        from { background-position: 100% 0; }
+        to { background-position: -120% 0; }
+      }
       @media (max-width: 520px) {
         .backdrop { padding: 12px; }
         .panel { max-height: calc(100vh - 24px); padding: 22px; }
+        .close-overlay {
+          top: max(14px, env(safe-area-inset-top));
+          right: max(14px, env(safe-area-inset-right));
+        }
       }
       @media (prefers-reduced-motion: reduce) {
-        .choice, .retry, .reveal { transition-duration: .01ms; }
+        .choice, .reveal, .close-overlay { transition-duration: .01ms; }
+        .skeleton-block { animation: none; background: var(--skeleton-base); }
       }
     </style>
-    <section class="backdrop" data-platform="${platform}" role="dialog" aria-modal="true" aria-labelledby="plottwist-title">
+    <section class="backdrop" data-platform="${platform}" role="dialog" aria-modal="true" aria-labelledby="plottwist-title" tabindex="-1">
+      <button class="close-overlay" type="button" aria-label="${copy.close}" aria-hidden="true" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" />
+        </svg>
+      </button>
       <div class="panel">
         <div class="brand"><img src="${iconUrl}" alt=""><p class="eyebrow">${copy.eyebrow}</p></div>
         <h2 id="plottwist-title">${copy.title}</h2>
@@ -196,19 +283,10 @@ export function mountOverlay(
   const body = shadow.querySelector<HTMLElement>(".body")!;
   const choices = shadow.querySelector<HTMLElement>(".choices")!;
   const backdrop = shadow.querySelector<HTMLElement>(".backdrop")!;
+  const closeButton = shadow.querySelector<HTMLButtonElement>(".close-overlay")!;
   const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   let answered = false;
   let closed = false;
-  let requestAttempts = 0;
-
-  const finish = () => {
-    if (closed) return;
-    closed = true;
-    backdrop.removeEventListener("keydown", keepFocusInside);
-    host.remove();
-    previouslyFocused?.focus();
-    onComplete();
-  };
 
   const focusableElements = (): HTMLButtonElement[] => [...shadow.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
   const keepFocusInside = (event: KeyboardEvent) => {
@@ -221,6 +299,7 @@ export function mountOverlay(
     const focusable = focusableElements();
     if (focusable.length === 0) {
       event.preventDefault();
+      backdrop.focus({ preventScroll: true });
       return;
     }
     const activeIndex = focusable.indexOf(shadow.activeElement as HTMLButtonElement);
@@ -230,46 +309,35 @@ export function mountOverlay(
     event.preventDefault();
     focusable[nextIndex].focus();
   };
-  backdrop.addEventListener("keydown", keepFocusInside);
-
-  const showLoading = () => {
-    body.innerHTML = `<p class="status" role="status" aria-live="polite"></p>`;
-    body.querySelector<HTMLElement>(".status")!.textContent = copy.loading;
-    choices.replaceChildren();
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    backdrop.removeEventListener("keydown", keepFocusInside);
+    host.remove();
+    previouslyFocused?.focus();
+    onComplete();
   };
 
-  const loadQuiz = async () => {
-    requestAttempts += 1;
-    showLoading();
-    const result = await requestQuiz();
-    if (!result.quiz) {
-      body.innerHTML = `<p class="status" role="alert"></p>`;
-      const errorCopy = result.error === "daily_limit_reached"
-        ? copy.dailyLimit
-        : result.error === "episode_already_spoiled"
-          ? copy.episodeAlreadySpoiled
-          : result.error === "rate_limited"
-            ? copy.rateLimited
-            : result.error === "runtime_unavailable"
-              ? copy.runtimeUnavailable
-              : copy.error;
-      body.querySelector<HTMLElement>(".status")!.textContent = errorCopy;
-      const canRetry = result.error === "unavailable" && requestAttempts < MAX_QUIZ_REQUEST_ATTEMPTS;
-      if (!canRetry) {
-        choices.replaceChildren();
-        window.setTimeout(finish, ERROR_DISMISS_MS);
-        return;
-      }
-      const retry = document.createElement("button");
-      retry.className = "retry";
-      retry.textContent = copy.retry;
-      retry.addEventListener("click", () => void loadQuiz(), { once: true });
-      choices.replaceChildren(retry);
-      retry.focus();
-      return;
-    }
+  backdrop.addEventListener("keydown", keepFocusInside);
+  closeButton.addEventListener("click", finish);
+  backdrop.focus({ preventScroll: true });
 
-    const quiz = result.quiz;
+  const showSkeleton = () => {
+    body.innerHTML = `
+      <div class="skeleton-stack" aria-hidden="true">
+        <span class="skeleton-block" data-width="hint"></span>
+        <span class="skeleton-block" data-width="question"></span>
+        <span class="skeleton-block" data-width="question-short"></span>
+      </div>
+      <p class="sr-only" role="status" aria-live="polite"></p>`;
+    body.querySelector<HTMLElement>(".sr-only")!.textContent = copy.loading;
+    choices.innerHTML = `
+      <span class="skeleton-block skeleton-choice" aria-hidden="true"></span>
+      <span class="skeleton-block skeleton-choice" aria-hidden="true"></span>
+      <span class="skeleton-block skeleton-choice" aria-hidden="true"></span>`;
+  };
+
+  const renderQuiz = () => {
     body.innerHTML = `<p class="hint"></p><p class="question"></p>`;
     body.querySelector<HTMLElement>(".hint")!.textContent = quiz.hint;
     body.querySelector<HTMLElement>(".question")!.textContent = quiz.question;
@@ -290,26 +358,31 @@ export function mountOverlay(
             button.setAttribute("aria-label", `${quiz.choices[buttonIndex]} — ${copy.correctChoice}`);
           }
         }
-        option.dataset.selected = "true";
+
         const isCorrect = index === quiz.correctChoiceIndex;
         if (!isCorrect) {
           option.dataset.result = "incorrect";
           option.setAttribute("aria-label", `${choice} — ${copy.incorrectChoice}`);
         }
-        const feedback = isCorrect ? copy.correct : copy.incorrect;
+        backdrop.focus({ preventScroll: true });
         body.innerHTML = `<p class="feedback" role="status"></p><p class="reveal"></p>`;
         const feedbackElement = body.querySelector<HTMLElement>(".feedback")!;
         feedbackElement.dataset.result = isCorrect ? "correct" : "incorrect";
-        feedbackElement.textContent = feedback;
+        feedbackElement.textContent = isCorrect ? copy.correct : copy.incorrect;
         const reveal = body.querySelector<HTMLElement>(".reveal")!;
         reveal.textContent = quiz.reveal;
-        window.setTimeout(() => { reveal.dataset.visible = "true"; }, 120);
-        window.setTimeout(finish, REVEAL_DURATION_MS);
+        closeButton.disabled = false;
+        closeButton.setAttribute("aria-hidden", "false");
+        window.setTimeout(() => {
+          reveal.dataset.visible = "true";
+          closeButton.dataset.visible = "true";
+          closeButton.focus({ preventScroll: true });
+        }, 120);
       });
       choices.append(option);
     });
-    choices.querySelector<HTMLButtonElement>(".choice")?.focus();
   };
 
-  void loadQuiz();
+  showSkeleton();
+  window.setTimeout(renderQuiz, SKELETON_DURATION_MS);
 }
