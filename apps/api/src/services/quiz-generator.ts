@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { QuizSchema, type Quiz, type QuizRequest } from "../contracts.js";
+import { shuffleQuizChoices } from "./quiz-choice-order.js";
 import { buildSpoilerPolicy, getViewerProgressSeconds } from "./spoiler-policy.js";
 
 const provider = createOpenAI({
@@ -39,5 +40,5 @@ export async function generateQuiz(request: QuizRequest): Promise<Quiz> {
     })
   });
 
-  return result.object;
+  return shuffleQuizChoices(result.object);
 }
