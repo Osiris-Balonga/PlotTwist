@@ -18,6 +18,7 @@ export async function generateQuiz(request: QuizRequest): Promise<Quiz> {
   const context = request.context;
   const result = await generateObject({
     model: provider(modelName),
+    mode: "json",
     schema: QuizSchema,
     system: [
       "You create concise, entertaining streaming-video quizzes.",

@@ -31,7 +31,7 @@ type ViewingContext = {
 
 ## Localization
 
-The extension derives a locale from the streaming page, browser preferences, and any visible content metadata. UI labels use extension-owned locale catalogs. The API receives the locale and requires DeepSeek to return quiz text in that language while preserving canonical content identifiers.
+The extension derives a locale from the streaming page, browser preferences, and any visible content metadata. UI labels use extension-owned locale catalogs. The API receives the locale and requires the configured LLM provider to return quiz text in that language while preserving canonical content identifiers.
 
 ## Integration strategy
 
