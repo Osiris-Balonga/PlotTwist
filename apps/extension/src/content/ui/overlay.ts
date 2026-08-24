@@ -1,9 +1,10 @@
 import type { Platform } from "../../shared/viewing-context";
 import { getUiCopy } from "./copy";
+import type { Quiz } from "../../shared/quiz";
 
 const ROOT_ID = "plottwist-extension-root";
 
-export function mountOverlay(platform: Platform, locale: string): void {
+export function mountOverlay(platform: Platform, locale: string, requestQuiz: () => Promise<{ quiz?: Quiz; error?: string }>): void {
   if (document.getElementById(ROOT_ID)) return;
 
   const copy = getUiCopy(locale);
@@ -35,7 +36,7 @@ export function mountOverlay(platform: Platform, locale: string): void {
     <div class="shell" data-open="false">
       <section class="panel" aria-label="PlotTwist quiz" aria-hidden="true">
         <div class="topline"><p class="eyebrow">${copy.eyebrow}</p><button class="close" type="button" aria-label="${copy.close}">×</button></div>
-        <h2>${copy.title}</h2><p>${copy.description}</p><div class="skeleton" role="status" aria-label="${copy.loading}"></div>
+        <h2>${copy.title}</h2><p class="content">${copy.description}</p><button class="load" type="button">Start quiz</button>
       </section>
       <button class="trigger" type="button" aria-label="${copy.open}">✦</button>
     </div>`;
@@ -45,6 +46,6 @@ export function mountOverlay(platform: Platform, locale: string): void {
   const setOpen = (open: boolean) => { shell.dataset.open = String(open); panel.setAttribute("aria-hidden", String(!open)); };
   shadow.querySelector<HTMLButtonElement>(".trigger")!.addEventListener("click", () => setOpen(shell.dataset.open !== "true"));
   shadow.querySelector<HTMLButtonElement>(".close")!.addEventListener("click", () => setOpen(false));
+  shadow.querySelector<HTMLButtonElement>(".load")!.addEventListener("click", async (event) => { const button = event.currentTarget as HTMLButtonElement; button.disabled = true; button.textContent = copy.loading; const result = await requestQuiz(); const content = shadow.querySelector<HTMLElement>(".content")!; if (!result.quiz) { content.textContent = result.error ?? "Unable to prepare a quiz."; button.disabled = false; return; } const quiz = result.quiz; content.textContent = `${quiz.hint}\n\n${quiz.question}`; button.remove(); quiz.choices.forEach((choice, index) => { const option = document.createElement("button"); option.className = "trigger"; option.textContent = choice; option.onclick = () => { content.textContent = `${index === quiz.correctChoiceIndex ? "Correct." : "Not quite."} ${quiz.reveal}`; option.parentElement?.querySelectorAll("button.trigger").forEach((item) => item.remove()); }; panel.append(option); }); });
   document.body.append(host);
 }
-
