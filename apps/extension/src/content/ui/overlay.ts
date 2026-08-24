@@ -1,6 +1,6 @@
 import type { Quiz } from "../../shared/quiz";
 import type { Platform } from "../../shared/viewing-context";
-import { REVEAL_DURATION_MS } from "../config";
+import { ERROR_DISMISS_MS, MAX_QUIZ_REQUEST_ATTEMPTS, REVEAL_DURATION_MS } from "../config";
 import { getUiCopy } from "./copy";
 
 const ROOT_ID = "plottwist-extension-root";
@@ -20,6 +20,7 @@ export function mountOverlay(
   host.id = ROOT_ID;
   host.dataset.platform = platform;
   const shadow = host.attachShadow({ mode: "open" });
+  const iconUrl = chrome.runtime.getURL("icons/icon-32.png");
 
   shadow.innerHTML = `
     <style>
@@ -32,6 +33,8 @@ export function mountOverlay(
         --choice-hover: #353535;
         --muted: #b8b8b8;
         --panel: #181818;
+        --success: #32a866;
+        --danger: #e24444;
         --panel-radius: 4px;
         --choice-radius: 2px;
         --panel-padding: 28px;
@@ -53,6 +56,8 @@ export function mountOverlay(
         --choice-hover: #223b53;
         --muted: #b5c7d9;
         --panel: #0f1b2a;
+        --success: #39b979;
+        --danger: #f05656;
         --panel-radius: 10px;
         --choice-radius: 6px;
         --panel-padding: 30px;
@@ -67,8 +72,17 @@ export function mountOverlay(
         background: var(--panel);
         box-shadow: 0 8px 24px rgb(0 0 0 / 48%);
       }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .brand img { width: 28px; height: 28px; border-radius: 7px; }
+      .backdrop[data-platform="prime"] .brand { gap: 12px; margin-bottom: 12px; }
+      .backdrop[data-platform="prime"] .brand img { width: 30px; height: 30px; border-radius: 8px; }
       .eyebrow {
-        margin: 0 0 10px;
+        margin: 0;
         color: var(--accent);
         font-size: 12px;
         font-weight: 700;
@@ -131,12 +145,24 @@ export function mountOverlay(
         box-shadow: inset 0 0 0 2px var(--accent);
         opacity: 1;
       }
+      .choice[data-result="correct"] {
+        background: color-mix(in srgb, var(--success) 30%, var(--choice));
+        box-shadow: inset 0 0 0 2px var(--success);
+        opacity: 1;
+      }
+      .choice[data-result="incorrect"] {
+        background: color-mix(in srgb, var(--danger) 34%, var(--choice));
+        box-shadow: inset 0 0 0 2px var(--danger);
+        opacity: 1;
+      }
       .feedback {
         margin: 0 0 8px;
         color: var(--accent);
         font-size: 18px;
         font-weight: 700;
       }
+      .feedback[data-result="correct"] { color: var(--success); }
+      .feedback[data-result="incorrect"] { color: var(--danger); }
       .reveal {
         margin: 0;
         color: #fff;
@@ -159,7 +185,7 @@ export function mountOverlay(
     </style>
     <section class="backdrop" data-platform="${platform}" role="dialog" aria-modal="true" aria-labelledby="plottwist-title">
       <div class="panel">
-        <p class="eyebrow">${copy.eyebrow}</p>
+        <div class="brand"><img src="${iconUrl}" alt=""><p class="eyebrow">${copy.eyebrow}</p></div>
         <h2 id="plottwist-title">${copy.title}</h2>
         <div class="body"></div>
         <div class="choices"></div>
@@ -172,6 +198,17 @@ export function mountOverlay(
   const backdrop = shadow.querySelector<HTMLElement>(".backdrop")!;
   const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   let answered = false;
+  let closed = false;
+  let requestAttempts = 0;
+
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    backdrop.removeEventListener("keydown", keepFocusInside);
+    host.remove();
+    previouslyFocused?.focus();
+    onComplete();
+  };
 
   const focusableElements = (): HTMLButtonElement[] => [...shadow.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
   const keepFocusInside = (event: KeyboardEvent) => {
@@ -202,11 +239,27 @@ export function mountOverlay(
   };
 
   const loadQuiz = async () => {
+    requestAttempts += 1;
     showLoading();
     const result = await requestQuiz();
     if (!result.quiz) {
       body.innerHTML = `<p class="status" role="alert"></p>`;
-      body.querySelector<HTMLElement>(".status")!.textContent = copy.error;
+      const errorCopy = result.error === "daily_limit_reached"
+        ? copy.dailyLimit
+        : result.error === "episode_already_spoiled"
+          ? copy.episodeAlreadySpoiled
+          : result.error === "rate_limited"
+            ? copy.rateLimited
+            : result.error === "runtime_unavailable"
+              ? copy.runtimeUnavailable
+              : copy.error;
+      body.querySelector<HTMLElement>(".status")!.textContent = errorCopy;
+      const canRetry = result.error === "unavailable" && requestAttempts < MAX_QUIZ_REQUEST_ATTEMPTS;
+      if (!canRetry) {
+        choices.replaceChildren();
+        window.setTimeout(finish, ERROR_DISMISS_MS);
+        return;
+      }
       const retry = document.createElement("button");
       retry.className = "retry";
       retry.textContent = copy.retry;
@@ -229,20 +282,29 @@ export function mountOverlay(
       option.addEventListener("click", () => {
         if (answered) return;
         answered = true;
-        for (const button of shadow.querySelectorAll<HTMLButtonElement>(".choice")) button.disabled = true;
+        const buttons = [...shadow.querySelectorAll<HTMLButtonElement>(".choice")];
+        for (const [buttonIndex, button] of buttons.entries()) {
+          button.disabled = true;
+          if (buttonIndex === quiz.correctChoiceIndex) {
+            button.dataset.result = "correct";
+            button.setAttribute("aria-label", `${quiz.choices[buttonIndex]} — ${copy.correctChoice}`);
+          }
+        }
         option.dataset.selected = "true";
-        const feedback = index === quiz.correctChoiceIndex ? copy.correct : copy.incorrect;
+        const isCorrect = index === quiz.correctChoiceIndex;
+        if (!isCorrect) {
+          option.dataset.result = "incorrect";
+          option.setAttribute("aria-label", `${choice} — ${copy.incorrectChoice}`);
+        }
+        const feedback = isCorrect ? copy.correct : copy.incorrect;
         body.innerHTML = `<p class="feedback" role="status"></p><p class="reveal"></p>`;
-        body.querySelector<HTMLElement>(".feedback")!.textContent = feedback;
+        const feedbackElement = body.querySelector<HTMLElement>(".feedback")!;
+        feedbackElement.dataset.result = isCorrect ? "correct" : "incorrect";
+        feedbackElement.textContent = feedback;
         const reveal = body.querySelector<HTMLElement>(".reveal")!;
         reveal.textContent = quiz.reveal;
         window.setTimeout(() => { reveal.dataset.visible = "true"; }, 120);
-        window.setTimeout(() => {
-          backdrop.removeEventListener("keydown", keepFocusInside);
-          host.remove();
-          previouslyFocused?.focus();
-          onComplete();
-        }, REVEAL_DURATION_MS);
+        window.setTimeout(finish, REVEAL_DURATION_MS);
       });
       choices.append(option);
     });
