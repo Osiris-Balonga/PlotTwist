@@ -1,12 +1,12 @@
-import { getLocale, getVideoTiming, observeDocument } from "./base";
+import { getActiveVideo, getLocale, getVideoTiming, observeDocument } from "./base";
 import type { PlatformAdapter } from "./types";
 
-const NETFLIX_PLAYER = ".watch-video video, .watch-video [data-uia='video-canvas'], .watch-video video";
+const NETFLIX_PLAYER = ".watch-video video, [data-uia='watch-video'] video";
 
 export const netflixAdapter: PlatformAdapter = {
   platform: "netflix",
   matches: (url) => url.hostname.endsWith("netflix.com"),
-  getPlayer: () => document.querySelector<HTMLVideoElement>(NETFLIX_PLAYER),
+  getPlayer: () => getActiveVideo(NETFLIX_PLAYER),
   getContext() {
     const match = window.location.pathname.match(/^\/watch\/(\d+)/);
     const video = this.getPlayer();
@@ -22,4 +22,3 @@ export const netflixAdapter: PlatformAdapter = {
   },
   observeChanges: observeDocument
 };
-

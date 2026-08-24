@@ -1,28 +1,31 @@
 type UiCopy = {
-  open: string;
-  close: string;
   eyebrow: string;
   title: string;
-  description: string;
   loading: string;
+  error: string;
+  retry: string;
+  correct: string;
+  incorrect: string;
 };
 
 const translations: Record<string, UiCopy> = {
   en: {
-    open: "Open PlotTwist quiz",
-    close: "Close quiz",
     eyebrow: "SPOILER-SAFE QUIZ",
     title: "Ready for a plot twist?",
-    description: "Choose a question when you are ready. We will keep it within your viewing progress.",
-    loading: "Preparing your first clue…"
+    loading: "Preparing a question for this moment…",
+    error: "The question could not be prepared. Your video will stay paused while we try again.",
+    retry: "Try again",
+    correct: "Correct.",
+    incorrect: "Not quite."
   },
   fr: {
-    open: "Ouvrir le quiz PlotTwist",
-    close: "Fermer le quiz",
     eyebrow: "QUIZ SANS SPOILER",
     title: "Prêt pour un rebondissement ?",
-    description: "Une question adaptée à votre progression va apparaître.",
-    loading: "Préparation de votre premier indice…"
+    loading: "Préparation d’une question adaptée à ce moment…",
+    error: "La question n’a pas pu être préparée. La vidéo reste en pause pendant une nouvelle tentative.",
+    retry: "Réessayer",
+    correct: "Bonne réponse.",
+    incorrect: "Pas tout à fait."
   }
 };
 

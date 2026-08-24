@@ -1,12 +1,12 @@
-import { getLocale, getVideoTiming, observeDocument } from "./base";
+import { getActiveVideo, getLocale, getVideoTiming, observeDocument } from "./base";
 import type { PlatformAdapter } from "./types";
 
-const PRIME_PLAYER = ".atvwebplayersdk-video-surface video";
+const PRIME_PLAYER = ".atvwebplayersdk-video-surface video, .atvwebplayersdk-player-container video";
 
 export const primeVideoAdapter: PlatformAdapter = {
   platform: "prime",
   matches: (url) => url.hostname.endsWith("primevideo.com"),
-  getPlayer: () => document.querySelector<HTMLVideoElement>(PRIME_PLAYER),
+  getPlayer: () => getActiveVideo(PRIME_PLAYER),
   getContext() {
     const match = window.location.pathname.match(/\/detail\/([^/?]+)/);
     const heading = document.querySelector("h1")?.textContent?.trim();
@@ -23,4 +23,3 @@ export const primeVideoAdapter: PlatformAdapter = {
   },
   observeChanges: observeDocument
 };
-

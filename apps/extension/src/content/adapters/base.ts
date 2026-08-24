@@ -1,5 +1,27 @@
 import type { ViewingContext } from "../../shared/viewing-context";
 
+function getVisibleArea(video: HTMLVideoElement): number {
+  const bounds = video.getBoundingClientRect();
+  return bounds.width > 0 && bounds.height > 0 ? bounds.width * bounds.height : 0;
+}
+
+export function getActiveVideo(selector: string): HTMLVideoElement | null {
+  return [...document.querySelectorAll<HTMLVideoElement>(selector)]
+    .filter((video) => video.isConnected && !video.ended && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
+    .sort((left, right) => {
+      const playbackDifference = Number(left.paused) - Number(right.paused);
+      if (playbackDifference !== 0) return playbackDifference;
+      return getVisibleArea(right) - getVisibleArea(left);
+    })[0] ?? null;
+}
+
+export function isPlaying(video: HTMLVideoElement): boolean {
+  return !video.paused
+    && !video.ended
+    && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+    && getVisibleArea(video) > 0;
+}
+
 export function getLocale(): string {
   const pageLanguage = document.documentElement.lang.trim();
   return pageLanguage || navigator.languages[0] || navigator.language || "en";
@@ -24,4 +46,3 @@ export function observeDocument(onChange: () => void): () => void {
     window.removeEventListener("popstate", onChange);
   };
 }
-

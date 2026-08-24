@@ -1,12 +1,253 @@
-import type { Platform } from "../../shared/viewing-context";
 import type { Quiz } from "../../shared/quiz";
+import type { Platform } from "../../shared/viewing-context";
+import { REVEAL_DURATION_MS } from "../config";
 import { getUiCopy } from "./copy";
+
 const ROOT_ID = "plottwist-extension-root";
-export function mountOverlay(platform: Platform, locale: string, requestQuiz: () => Promise<{ quiz?: Quiz; error?: string }>): void {
+
+type QuizResult = { quiz?: Quiz; error?: string };
+
+export function mountOverlay(
+  platform: Platform,
+  locale: string,
+  requestQuiz: () => Promise<QuizResult>,
+  onComplete: () => void
+): void {
   if (document.getElementById(ROOT_ID)) return;
-  const copy = getUiCopy(locale); const host = document.createElement("div"); host.id = ROOT_ID;
-  const shadow = host.attachShadow({ mode: "open" }); const netflix = platform === "netflix";
-  shadow.innerHTML = `<style>:host{all:initial}.backdrop{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:24px;background:${netflix ? "rgb(0 0 0/.78)" : "rgb(0 5 13/.76)"};font-family:${netflix ? '"Netflix Sans",sans-serif' : '"Amazon Ember",Arial,sans-serif'};color:#fff}.panel{width:min(460px,100%);padding:${netflix ? "28px" : "24px"};border-radius:${netflix ? "4px" : "8px"};background:${netflix ? "#181818" : "#161e2d"};box-shadow:0 16px 40px rgb(0 0 0/.48)}.eyebrow{margin:0 0 12px;color:${netflix ? "#e50914" : "#00a8e1"};font:700 12px inherit;letter-spacing:.08em}h2{margin:0 0 10px;font-size:24px}.content{margin:0;color:#d2d2d2;font:16px/1.5 inherit;white-space:pre-line}.status{margin-top:18px;color:#b3b3b3}.choices{display:grid;gap:10px;margin-top:20px}.choice{min-height:48px;padding:12px 14px;border:1px solid ${netflix ? "#555" : "#4a5a70"};border-radius:${netflix ? "2px" : "4px"};background:transparent;color:inherit;text-align:left;font:600 16px inherit;cursor:pointer}.choice:hover,.choice:focus-visible{border-color:${netflix ? "#fff" : "#00a8e1"};background:${netflix ? "#333" : "#233047"};outline:0}</style><section class="backdrop" role="dialog" aria-modal="true"><div class="panel"><p class="eyebrow">${copy.eyebrow}</p><h2>${copy.title}</h2><p class="content">${copy.loading}</p><p class="status">${copy.loading}</p><div class="choices"></div></div></section>`;
-  document.body.append(host); const content = shadow.querySelector<HTMLElement>(".content")!; const status = shadow.querySelector<HTMLElement>(".status")!; const choices = shadow.querySelector<HTMLElement>(".choices")!;
-  void requestQuiz().then((result) => { if (!result.quiz) { content.textContent = result.error ?? "Unable to prepare a quiz."; status.textContent = ""; return; } const quiz = result.quiz; content.textContent = `${quiz.hint}\n\n${quiz.question}`; status.textContent = ""; quiz.choices.forEach((choice, index) => { const option = document.createElement("button"); option.className = "choice"; option.textContent = choice; option.onclick = () => { content.textContent = `${index === quiz.correctChoiceIndex ? "Correct." : "Not quite."} ${quiz.reveal}`; choices.replaceChildren(); window.setTimeout(() => host.remove(), 1800); }; choices.append(option); }); });
+
+  const copy = getUiCopy(locale);
+  const host = document.createElement("div");
+  host.id = ROOT_ID;
+  host.dataset.platform = platform;
+  const shadow = host.attachShadow({ mode: "open" });
+
+  shadow.innerHTML = `
+    <style>
+      :host { all: initial; }
+      *, *::before, *::after { box-sizing: border-box; }
+      .backdrop {
+        --accent: #e50914;
+        --backdrop: rgb(0 0 0 / 78%);
+        --choice: #272727;
+        --choice-hover: #353535;
+        --muted: #b8b8b8;
+        --panel: #181818;
+        --panel-radius: 4px;
+        --choice-radius: 2px;
+        --panel-padding: 28px;
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: var(--backdrop);
+        color: #fff;
+        font-family: "Netflix Sans", "Helvetica Neue", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .backdrop[data-platform="prime"] {
+        --accent: #00a8e1;
+        --backdrop: rgb(0 5 13 / 82%);
+        --choice: #18283a;
+        --choice-hover: #223b53;
+        --muted: #b5c7d9;
+        --panel: #0f1b2a;
+        --panel-radius: 10px;
+        --choice-radius: 6px;
+        --panel-padding: 30px;
+        font-family: "Amazon Ember", Arial, sans-serif;
+      }
+      .panel {
+        width: min(500px, 100%);
+        max-height: min(680px, calc(100vh - 40px));
+        overflow: auto;
+        padding: var(--panel-padding);
+        border-radius: var(--panel-radius);
+        background: var(--panel);
+        box-shadow: 0 8px 24px rgb(0 0 0 / 48%);
+      }
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .06em;
+      }
+      h2 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.2;
+        letter-spacing: -.02em;
+        text-wrap: balance;
+      }
+      .body { min-width: 0; margin-top: 18px; }
+      .hint, .question, .reveal, .status {
+        overflow-wrap: anywhere;
+        text-wrap: pretty;
+      }
+      .hint {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.45;
+      }
+      .question {
+        margin: 0;
+        color: #fff;
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1.45;
+      }
+      .status {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .choices { display: grid; gap: 10px; margin-top: 20px; }
+      .choice, .retry {
+        min-height: 48px;
+        border: 0;
+        border-radius: var(--choice-radius);
+        background: var(--choice);
+        color: inherit;
+        font: 600 16px/1.35 inherit;
+        cursor: pointer;
+        transition-property: background-color, box-shadow, opacity, transform;
+        transition-duration: 180ms;
+        transition-timing-function: cubic-bezier(.2, 0, 0, 1);
+      }
+      .choice { padding: 12px 14px; text-align: start; }
+      .retry { margin-top: 18px; padding: 12px 18px; }
+      .choice:hover, .retry:hover { background: var(--choice-hover); }
+      .choice:active, .retry:active { transform: scale(.96); }
+      .choice:focus-visible, .retry:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+      .choice:disabled { cursor: default; opacity: .62; }
+      .choice[data-selected="true"] {
+        box-shadow: inset 0 0 0 2px var(--accent);
+        opacity: 1;
+      }
+      .feedback {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .reveal {
+        margin: 0;
+        color: #fff;
+        font-size: 16px;
+        line-height: 1.55;
+        opacity: 0;
+        transform: translateY(6px);
+        transition-property: opacity, transform;
+        transition-duration: 220ms;
+        transition-timing-function: cubic-bezier(.2, 0, 0, 1);
+      }
+      .reveal[data-visible="true"] { opacity: 1; transform: translateY(0); }
+      @media (max-width: 520px) {
+        .backdrop { padding: 12px; }
+        .panel { max-height: calc(100vh - 24px); padding: 22px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .choice, .retry, .reveal { transition-duration: .01ms; }
+      }
+    </style>
+    <section class="backdrop" data-platform="${platform}" role="dialog" aria-modal="true" aria-labelledby="plottwist-title">
+      <div class="panel">
+        <p class="eyebrow">${copy.eyebrow}</p>
+        <h2 id="plottwist-title">${copy.title}</h2>
+        <div class="body"></div>
+        <div class="choices"></div>
+      </div>
+    </section>`;
+
+  document.body.append(host);
+  const body = shadow.querySelector<HTMLElement>(".body")!;
+  const choices = shadow.querySelector<HTMLElement>(".choices")!;
+  const backdrop = shadow.querySelector<HTMLElement>(".backdrop")!;
+  const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  let answered = false;
+
+  const focusableElements = (): HTMLButtonElement[] => [...shadow.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+  const keepFocusInside = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = focusableElements();
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const activeIndex = focusable.indexOf(shadow.activeElement as HTMLButtonElement);
+    const nextIndex = event.shiftKey
+      ? (activeIndex <= 0 ? focusable.length - 1 : activeIndex - 1)
+      : (activeIndex === focusable.length - 1 ? 0 : activeIndex + 1);
+    event.preventDefault();
+    focusable[nextIndex].focus();
+  };
+  backdrop.addEventListener("keydown", keepFocusInside);
+
+  const showLoading = () => {
+    body.innerHTML = `<p class="status" role="status" aria-live="polite"></p>`;
+    body.querySelector<HTMLElement>(".status")!.textContent = copy.loading;
+    choices.replaceChildren();
+  };
+
+  const loadQuiz = async () => {
+    showLoading();
+    const result = await requestQuiz();
+    if (!result.quiz) {
+      body.innerHTML = `<p class="status" role="alert"></p>`;
+      body.querySelector<HTMLElement>(".status")!.textContent = copy.error;
+      const retry = document.createElement("button");
+      retry.className = "retry";
+      retry.textContent = copy.retry;
+      retry.addEventListener("click", () => void loadQuiz(), { once: true });
+      choices.replaceChildren(retry);
+      retry.focus();
+      return;
+    }
+
+    const quiz = result.quiz;
+    body.innerHTML = `<p class="hint"></p><p class="question"></p>`;
+    body.querySelector<HTMLElement>(".hint")!.textContent = quiz.hint;
+    body.querySelector<HTMLElement>(".question")!.textContent = quiz.question;
+    choices.replaceChildren();
+
+    quiz.choices.forEach((choice, index) => {
+      const option = document.createElement("button");
+      option.className = "choice";
+      option.textContent = choice;
+      option.addEventListener("click", () => {
+        if (answered) return;
+        answered = true;
+        for (const button of shadow.querySelectorAll<HTMLButtonElement>(".choice")) button.disabled = true;
+        option.dataset.selected = "true";
+        const feedback = index === quiz.correctChoiceIndex ? copy.correct : copy.incorrect;
+        body.innerHTML = `<p class="feedback" role="status"></p><p class="reveal"></p>`;
+        body.querySelector<HTMLElement>(".feedback")!.textContent = feedback;
+        const reveal = body.querySelector<HTMLElement>(".reveal")!;
+        reveal.textContent = quiz.reveal;
+        window.setTimeout(() => { reveal.dataset.visible = "true"; }, 120);
+        window.setTimeout(() => {
+          backdrop.removeEventListener("keydown", keepFocusInside);
+          host.remove();
+          previouslyFocused?.focus();
+          onComplete();
+        }, REVEAL_DURATION_MS);
+      });
+      choices.append(option);
+    });
+    choices.querySelector<HTMLButtonElement>(".choice")?.focus();
+  };
+
+  void loadQuiz();
 }
