@@ -22,10 +22,12 @@ Install dependencies once:
 npm install
 ```
 
-Start the API with a DeepSeek key:
+Start the API with an OpenAI-compatible LLM provider:
 
 ```bash
-set DEEPSEEK_API_KEY=your_key
+set LLM_API_KEY=your_key
+set LLM_BASE_URL=https://api.example.com/v1
+set LLM_MODEL=your-model-id
 npm run dev -w @plottwist/api
 ```
 

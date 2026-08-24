@@ -9,7 +9,7 @@ Chrome extension (Manifest V3)
 API PlotTwist
   validation -> metadata resolution -> spoiler policy enforcement
         |                                      |
-        +---------------------> DeepSeek V4 Flash
+        +---------------------> Configured LLM provider
 ```
 
 ## Viewing context contract
