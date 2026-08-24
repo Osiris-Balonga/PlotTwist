@@ -10,8 +10,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "strict": true,
-    "types": ["chrome"]
+    "types": ["chrome", "vite/client"]
   },
   "include": ["src", "manifest.config.ts", "vite.config.ts"]
 }
-
