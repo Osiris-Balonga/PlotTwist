@@ -17,16 +17,15 @@ const translations: Record<string, UiCopy> = {
     loading: "Preparing your first clue…"
   },
   fr: {
-    open: "Open PlotTwist quiz",
-    close: "Close quiz",
+    open: "Ouvrir le quiz PlotTwist",
+    close: "Fermer le quiz",
     eyebrow: "QUIZ SANS SPOILER",
-    title: "Ready for a plot twist?",
-    description: "Choose a question when you are ready. We will keep it within your viewing progress.",
-    loading: "Preparing your first clue…"
+    title: "Prêt pour un rebondissement ?",
+    description: "Une question adaptée à votre progression va apparaître.",
+    loading: "Préparation de votre premier indice…"
   }
 };
 
 export function getUiCopy(locale: string): UiCopy {
   return translations[locale.split("-")[0]] ?? translations.en;
 }
-
