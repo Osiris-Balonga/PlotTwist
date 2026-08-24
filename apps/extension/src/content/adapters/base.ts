@@ -36,6 +36,22 @@ export function getVideoTiming(video: HTMLVideoElement | null): Pick<ViewingCont
   };
 }
 
+export function getFirstText(selectors: string[]): string | undefined {
+  for (const selector of selectors) {
+    const text = document.querySelector(selector)?.textContent?.trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+export function getEpisodeCoordinates(value?: string): Pick<ViewingContext, "season" | "episode"> {
+  if (!value) return {};
+  const match = value.match(/(?:season|saison)\s*(\d+).*?(?:episode|ep\.?|épisode|ép\.?)\s*(\d+)/i)
+    ?? value.match(/S(\d+)\s*E(\d+)/i);
+  if (!match) return {};
+  return { season: Number(match[1]), episode: Number(match[2]) };
+}
+
 export function observeDocument(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, { childList: true, subtree: true });
