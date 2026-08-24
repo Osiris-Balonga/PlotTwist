@@ -1,12 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { QuizRequestSchema } from "./contracts.js";
 import { generateQuiz } from "./services/quiz-generator.js";
+import { getAnonymousClientKey, quizRateLimiter } from "./services/rate-limit.js";
 
-function json(response: ServerResponse, status: number, payload: unknown): void {
+function json(response: ServerResponse, status: number, payload: unknown, headers: Record<string, string> = {}): void {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS"
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-PlotTwist-Client-Id",
+    ...headers
   });
   response.end(JSON.stringify(payload));
 }
@@ -27,11 +30,25 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   const parsed = QuizRequestSchema.safeParse(payload);
   if (!parsed.success) return json(response, 422, { error: "Invalid quiz request.", details: parsed.error.flatten() });
 
+  const rateLimit = quizRateLimiter.consume(getAnonymousClientKey(request));
+  const rateLimitHeaders = {
+    "X-RateLimit-Limit": String(rateLimit.limit),
+    "X-RateLimit-Remaining": String(rateLimit.remaining),
+    "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1_000))
+  };
+  if (!rateLimit.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1_000));
+    return json(response, 429, { error: "Daily quiz request limit reached.", code: "rate_limited" }, {
+      ...rateLimitHeaders,
+      "Retry-After": String(retryAfterSeconds)
+    });
+  }
+
   try {
     const quiz = await generateQuiz(parsed.data);
-    return json(response, 200, { quiz });
+    return json(response, 200, { quiz }, rateLimitHeaders);
   } catch (error) {
     console.error("Quiz generation failed", error);
-    return json(response, 503, { error: "Quiz generation is temporarily unavailable." });
+    return json(response, 503, { error: "Quiz generation is temporarily unavailable." }, rateLimitHeaders);
   }
 }
