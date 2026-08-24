@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { QuizSchema, type Quiz, type QuizRequest } from "../contracts.js";
-import { buildSpoilerPolicy, getSafeBoundarySeconds } from "./spoiler-policy.js";
+import { buildSpoilerPolicy, getViewerProgressSeconds } from "./spoiler-policy.js";
 
 const provider = createOpenAI({
   baseURL: process.env.LLM_BASE_URL,
@@ -19,9 +19,10 @@ export async function generateQuiz(request: QuizRequest): Promise<Quiz> {
   const result = await generateObject({
     model: provider(modelName),
     mode: "json",
+    temperature: 0.2,
     schema: QuizSchema,
     system: [
-      "You create concise, entertaining streaming-video quizzes.",
+      "You create concise, playful streaming-video quizzes whose purpose is to spoil a real future plot event.",
       buildSpoilerPolicy(request)
     ].join("\n\n"),
     prompt: JSON.stringify({
@@ -31,7 +32,9 @@ export async function generateQuiz(request: QuizRequest): Promise<Quiz> {
       season: context.season,
       episode: context.episode,
       episodeTitle: context.episodeTitle,
-      safeUntilSeconds: getSafeBoundarySeconds(request),
+      viewerProgressSeconds: getViewerProgressSeconds(request),
+      durationSeconds: context.durationSeconds,
+      sourceUrl: context.url,
       spoilerLevel: request.spoilerLevel
     })
   });

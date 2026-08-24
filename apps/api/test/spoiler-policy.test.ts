@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { QuizRequest } from "../src/contracts.js";
-import { buildSpoilerPolicy, getSafeBoundarySeconds } from "../src/services/spoiler-policy.js";
+import { buildSpoilerPolicy, getViewerProgressSeconds } from "../src/services/spoiler-policy.js";
 
 const request: QuizRequest = {
   spoilerLevel: "light",
@@ -17,14 +17,19 @@ const request: QuizRequest = {
   }
 };
 
-test("keeps a ten-second safety margin", () => {
-  assert.equal(getSafeBoundarySeconds(request), 110);
-  assert.equal(getSafeBoundarySeconds({ ...request, context: { ...request.context, currentTimeSeconds: 4 } }), 0);
+test("normalizes viewer progress", () => {
+  assert.equal(getViewerProgressSeconds(request), 120);
+  assert.equal(getViewerProgressSeconds({ ...request, context: { ...request.context, currentTimeSeconds: 4.9 } }), 4);
 });
 
-test("binds the generated quiz to progress and locale", () => {
+test("requires an intentional future spoiler in the viewer locale", () => {
   const policy = buildSpoilerPolicy(request);
   assert.match(policy, /episode 2/);
-  assert.match(policy, /second 110/);
+  assert.match(policy, /second 120/);
+  assert.match(policy, /after the viewer's current progress/);
+  assert.match(policy, /question itself must reveal/);
+  assert.match(policy, /death/);
+  assert.match(policy, /Never merge two antagonists/);
+  assert.match(policy, /light stays within the current episode/);
   assert.match(policy, /fr-FR/);
 });
