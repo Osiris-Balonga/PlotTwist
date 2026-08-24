@@ -2,7 +2,7 @@
   "name": "plottwist",
   "version": "0.1.0",
   "private": true,
-  "description": "Interactive, spoiler-aware quizzes for streaming platforms.",
+  "description": "Interactive spoiler quizzes for streaming platforms.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -16,4 +16,3 @@
     "node": ">=22"
   }
 }
-
