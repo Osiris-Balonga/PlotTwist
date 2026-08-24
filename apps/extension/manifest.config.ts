@@ -1,6 +1,17 @@
 import type { ManifestV3Export } from "@crxjs/vite-plugin";
 
-const manifest: ManifestV3Export = {
+const DEFAULT_API_URL = "http://localhost:8787/v1/quiz";
+
+function apiHostPermission(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("VITE_API_URL must use HTTP or HTTPS.");
+  }
+  return `${url.origin}/*`;
+}
+
+export function createManifest(apiUrl = DEFAULT_API_URL): ManifestV3Export {
+  return {
   manifest_version: 3,
   name: "PlotTwist",
   version: "0.1.0",
@@ -23,7 +34,7 @@ const manifest: ManifestV3Export = {
     type: "module"
   },
   permissions: ["storage"],
-  host_permissions: ["https://*.netflix.com/*", "https://*.primevideo.com/*", "http://localhost:8787/*"],
+  host_permissions: ["https://*.netflix.com/*", "https://*.primevideo.com/*", apiHostPermission(apiUrl)],
   content_scripts: [
     {
       matches: ["https://*.netflix.com/*", "https://*.primevideo.com/*"],
@@ -37,6 +48,7 @@ const manifest: ManifestV3Export = {
       matches: ["https://*.netflix.com/*", "https://*.primevideo.com/*"]
     }
   ]
-};
+  };
+}
 
-export default manifest;
+export default createManifest();

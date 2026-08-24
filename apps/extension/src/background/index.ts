@@ -3,7 +3,7 @@ import { MAX_DAILY_SPOILERS } from "../shared/limits";
 import type { Quiz, QuizEligibility, QuizErrorCode, QuizRequest } from "../shared/quiz";
 import type { ViewingContext } from "../shared/viewing-context";
 
-const API_URL = "http://localhost:8787/v1/quiz";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787/v1/quiz";
 const CONTEXT_KEY = "activeViewingContext";
 const DELIVERY_STATE_KEY = "quizDeliveryState:v2";
 const LEGACY_DELIVERY_STATE_KEY = "quizDeliveryState:v1";

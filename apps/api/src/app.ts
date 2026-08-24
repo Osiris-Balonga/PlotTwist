@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { QuizRequestSchema } from "./contracts.js";
 import { generateQuiz } from "./services/quiz-generator.js";
 import { getAnonymousClientKey, quizRateLimiter } from "./services/rate-limit.js";
+import { renderHomePage, renderPrivacyPage } from "./site.js";
 
 function json(response: ServerResponse, status: number, payload: unknown, headers: Record<string, string> = {}): void {
   response.writeHead(status, {
@@ -14,6 +15,14 @@ function json(response: ServerResponse, status: number, payload: unknown, header
   response.end(JSON.stringify(payload));
 }
 
+function html(response: ServerResponse, body: string): void {
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "public, max-age=300"
+  });
+  response.end(body);
+}
+
 async function readJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -22,6 +31,8 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 
 export async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  if (request.method === "GET" && url.pathname === "/") return html(response, renderHomePage());
+  if (request.method === "GET" && url.pathname === "/privacy") return html(response, renderPrivacyPage());
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { status: "ok" });
   if (request.method === "OPTIONS" && url.pathname.startsWith("/v1/")) return json(response, 204, {});
   if (request.method !== "POST" || url.pathname !== "/v1/quiz") return json(response, 404, { error: "Not found." });
@@ -52,3 +63,5 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     return json(response, 503, { error: "Quiz generation is temporarily unavailable." }, rateLimitHeaders);
   }
 }
+
+export default handleRequest;
