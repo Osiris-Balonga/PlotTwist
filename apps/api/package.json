@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/**/*.test.ts",
     "start": "node dist/server.js",
     "check": "tsc --noEmit"
   },
