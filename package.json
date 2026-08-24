@@ -1,0 +1,19 @@
+{
+  "name": "plottwist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive, spoiler-aware quizzes for streaming platforms.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+
