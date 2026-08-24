@@ -63,3 +63,5 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     return json(response, 503, { error: "Quiz generation is temporarily unavailable." }, rateLimitHeaders);
   }
 }
+
+export default handleRequest;
