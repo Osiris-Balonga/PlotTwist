@@ -11,7 +11,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.3",
     "@types/chrome": "^0.2.7",
-    "typescript": "^5.7.3",
+    "typescript": "^7.0.2",
     "vite": "^6.0.7"
   }
 }
