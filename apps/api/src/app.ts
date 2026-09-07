@@ -73,14 +73,20 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+export function resolveRequestPath(url: URL): string {
+  const forwardedPath = url.searchParams.get("__plottwist_path");
+  return forwardedPath === null ? url.pathname : `/${forwardedPath.replace(/^\/+/, "")}`;
+}
+
 export async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-  if (request.method === "GET" && await servePublicAsset(url.pathname, response)) return;
-  if (request.method === "GET" && url.pathname === "/") return html(response, renderHomePage());
-  if (request.method === "GET" && url.pathname === "/privacy") return html(response, renderPrivacyPage());
-  if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { status: "ok" });
-  if (request.method === "OPTIONS" && url.pathname.startsWith("/v1/")) return json(response, 204, {});
-  if (request.method !== "POST" || url.pathname !== "/v1/quiz") return json(response, 404, { error: "Not found." });
+  const pathname = resolveRequestPath(url);
+  if (request.method === "GET" && await servePublicAsset(pathname, response)) return;
+  if (request.method === "GET" && pathname === "/") return html(response, renderHomePage());
+  if (request.method === "GET" && pathname === "/privacy") return html(response, renderPrivacyPage());
+  if (request.method === "GET" && pathname === "/health") return json(response, 200, { status: "ok" });
+  if (request.method === "OPTIONS" && pathname.startsWith("/v1/")) return json(response, 204, {});
+  if (request.method !== "POST" || pathname !== "/v1/quiz") return json(response, 404, { error: "Not found." });
 
   const payload = await readJson(request).catch(() => undefined);
   const parsed = QuizRequestSchema.safeParse(payload);
