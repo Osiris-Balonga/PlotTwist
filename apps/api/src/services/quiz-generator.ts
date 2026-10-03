@@ -3,24 +3,22 @@ import { generateObject } from "ai";
 import { QuizSchema, type Quiz, type QuizRequest } from "../contracts.js";
 import { shuffleQuizChoices } from "./quiz-choice-order.js";
 import { buildSpoilerPolicy, getViewerProgressSeconds } from "./spoiler-policy.js";
+import { PROVIDERS, type Connection } from "./connections.js";
 
-const provider = createOpenAI({
-  baseURL: process.env.LLM_BASE_URL,
-  apiKey: process.env.LLM_API_KEY
-});
-
-const modelName = process.env.LLM_MODEL;
-
-export async function generateQuiz(request: QuizRequest): Promise<Quiz> {
-  if (!process.env.LLM_API_KEY || !process.env.LLM_BASE_URL || !modelName) {
-    throw new Error("LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL must be configured.");
+export async function generateQuiz(request: QuizRequest, config: Connection): Promise<Quiz> {
+  if (!config.apiKey || !config.model) {
+    throw new Error("Personal connection is not configured.");
   }
+  const provider = createOpenAI({
+    baseURL: PROVIDERS[config.provider].baseUrl, apiKey: config.apiKey,
+    fetch: (url, options) => fetch(url, { ...options, redirect: "error" })
+  });
 
   const context = request.context;
   const result = await generateObject({
-    model: provider(modelName),
+    model: provider(config.model),
+    abortSignal: AbortSignal.timeout(25_000),
     mode: "json",
-    temperature: 0.2,
     schema: QuizSchema,
     system: [
       "You create concise, playful streaming-video quizzes whose purpose is to spoil a real future plot event.",

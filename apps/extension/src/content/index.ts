@@ -3,12 +3,8 @@ import type { Quiz, QuizEligibility, QuizErrorCode, QuizRequest } from "../share
 import { isPlaying } from "./adapters/base";
 import { netflixAdapter } from "./adapters/netflix";
 import { primeVideoAdapter } from "./adapters/prime-video";
-import {
-  DEFAULT_SPOILER_LEVEL,
-  MAX_QUIZ_REQUEST_ATTEMPTS,
-  QUIZ_PREFETCH_SECONDS,
-  QUIZ_TRIGGER_SECONDS
-} from "./config";
+import { MAX_QUIZ_REQUEST_ATTEMPTS } from "./config";
+import { DEFAULT_SETTINGS, normalizeSettings } from "../shared/settings";
 import { mountOverlay } from "./ui/overlay";
 
 type QuizResult = { quiz?: Quiz; error?: QuizErrorCode };
@@ -16,6 +12,10 @@ type QuizResult = { quiz?: Quiz; error?: QuizErrorCode };
 const adapter = [netflixAdapter, primeVideoAdapter].find((candidate) => candidate.matches(new URL(location.href)));
 
 if (adapter) {
+  let settings = DEFAULT_SETTINGS;
+  let settingsReady = false;
+  let settingsRevision = 0;
+  const enabled = () => settingsReady && settings.enabled && settings.platforms[adapter.platform];
   let lastContext = adapter.getContext();
   let shownEpisodeKey: string | undefined;
   let presentingEpisodeKey: string | undefined;
@@ -33,6 +33,7 @@ if (adapter) {
     if (existing) return existing;
 
     const load = (async (): Promise<QuizResult> => {
+      if (!enabled()) return { error: "disabled" };
       if (checkEligibility) {
         const eligibility = await sendMessage<QuizEligibility>({
           type: "CHECK_QUIZ_ELIGIBILITY",
@@ -50,9 +51,10 @@ if (adapter) {
         request: {
           context: {
             ...context,
-            currentTimeSeconds: Math.max(context.currentTimeSeconds, QUIZ_TRIGGER_SECONDS)
+            currentTimeSeconds: Math.max(context.currentTimeSeconds, settings.triggerSeconds),
+            locale: settings.locale === "auto" ? context.locale : settings.locale
           },
-          spoilerLevel: DEFAULT_SPOILER_LEVEL
+          spoilerLevel: settings.spoilerLevel
         } satisfies QuizRequest
       })) ?? { error: "runtime_unavailable" };
     })();
@@ -62,6 +64,7 @@ if (adapter) {
   };
 
   const presentQuizWhenReady = async (episodeKey: string): Promise<void> => {
+    const revision = settingsRevision;
     presentingEpisodeKey = episodeKey;
     try {
       let result = await startQuizLoad(episodeKey);
@@ -75,9 +78,10 @@ if (adapter) {
       }
 
       if (!result.quiz) {
-        suppressedEpisodeKeys.add(episodeKey);
+        if (revision === settingsRevision && result.error !== "disabled") suppressedEpisodeKeys.add(episodeKey);
         return;
       }
+      if (revision !== settingsRevision || !enabled()) return;
 
       const context = adapter.getContext();
       const player = adapter.getPlayer();
@@ -85,7 +89,7 @@ if (adapter) {
         buildEpisodeKey(context) !== episodeKey
         || !player
         || !isPlaying(player)
-        || player.currentTime < QUIZ_TRIGGER_SECONDS
+        || player.currentTime < settings.triggerSeconds
       ) return;
 
       const claim = await sendMessage<QuizEligibility>({
@@ -100,14 +104,15 @@ if (adapter) {
       const activePlayer = adapter.getPlayer();
       if (
         buildEpisodeKey(adapter.getContext()) !== episodeKey
+        || revision !== settingsRevision || !enabled()
         || !activePlayer
         || !isPlaying(activePlayer)
-        || activePlayer.currentTime < QUIZ_TRIGGER_SECONDS
+        || activePlayer.currentTime < settings.triggerSeconds
       ) return;
 
       shownEpisodeKey = episodeKey;
       activePlayer.pause();
-      mountOverlay(adapter.platform, context.locale, result.quiz, () => {
+      mountOverlay(adapter.platform, settings.locale === "auto" ? context.locale : settings.locale, result.quiz, () => {
         if (activePlayer.isConnected && !activePlayer.ended) void activePlayer.play().catch(() => undefined);
       });
     } finally {
@@ -116,6 +121,7 @@ if (adapter) {
   };
 
   const update = () => {
+    if (!enabled()) return;
     const context = adapter.getContext();
     if (JSON.stringify(context) !== JSON.stringify(lastContext)) {
       lastContext = context;
@@ -131,13 +137,20 @@ if (adapter) {
       || !isPlaying(player)
     ) return;
 
-    if (player.currentTime >= QUIZ_PREFETCH_SECONDS) void startQuizLoad(episodeKey);
-    if (player.currentTime >= QUIZ_TRIGGER_SECONDS && presentingEpisodeKey !== episodeKey) {
+    if (player.currentTime >= Math.max(0, settings.triggerSeconds - 60)) void startQuizLoad(episodeKey);
+    if (player.currentTime >= settings.triggerSeconds && presentingEpisodeKey !== episodeKey) {
       void presentQuizWhenReady(episodeKey);
     }
   };
 
   adapter.observeChanges(update);
   window.setInterval(update, 1_000);
-  update();
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (sender.id !== chrome.runtime.id || message.type !== "PREFERENCES_CHANGED") return;
+    settings = normalizeSettings(message.settings);
+    settingsRevision++;
+    quizLoads.clear(); requestAttempts.clear(); suppressedEpisodeKeys.clear();
+    update();
+  });
+  void sendMessage<unknown>({ type: "GET_PREFERENCES" }).then((stored) => { settings = normalizeSettings(stored); settingsReady = true; update(); });
 }

@@ -3,15 +3,17 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { QuizRequestSchema } from "./contracts.js";
 import { generateQuiz } from "./services/quiz-generator.js";
-import { getAnonymousClientKey, quizRateLimiter } from "./services/rate-limit.js";
+import { quizRateLimiter } from "./services/rate-limit.js";
 import { renderHomePage, renderPrivacyPage } from "./site.js";
+import { handleConnectionRequest } from "./connection.js";
+import { connectionIdentity, loadConnection } from "./services/connections.js";
 
 function json(response: ServerResponse, status: number, payload: unknown, headers: Record<string, string> = {}): void {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-PlotTwist-Client-Id",
+    "Access-Control-Allow-Headers": "Content-Type, X-PlotTwist-Client-Id, Authorization",
     ...headers
   });
   response.end(JSON.stringify(payload));
@@ -81,6 +83,7 @@ export function resolveRequestPath(url: URL): string {
 export async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   const pathname = resolveRequestPath(url);
+  if (pathname === "/v1/connection" || pathname.startsWith("/v1/connection/")) return handleConnectionRequest(request, response, pathname);
   if (request.method === "GET" && await servePublicAsset(pathname, response)) return;
   if (request.method === "GET" && pathname === "/") return html(response, renderHomePage());
   if (request.method === "GET" && pathname === "/privacy") return html(response, renderPrivacyPage());
@@ -92,7 +95,9 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   const parsed = QuizRequestSchema.safeParse(payload);
   if (!parsed.success) return json(response, 422, { error: "Invalid quiz request.", details: parsed.error.flatten() });
 
-  const rateLimit = quizRateLimiter.consume(getAnonymousClientKey(request));
+  const identity = connectionIdentity(request.headers.authorization);
+  if (!identity) return json(response, 401, { error: "Configure ta clé API dans les paramètres.", code: "connection_required" });
+  const rateLimit = quizRateLimiter.consume(identity);
   const rateLimitHeaders = {
     "X-RateLimit-Limit": String(rateLimit.limit),
     "X-RateLimit-Remaining": String(rateLimit.remaining),
@@ -107,10 +112,12 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   }
 
   try {
-    const quiz = await generateQuiz(parsed.data);
+    const connection = await loadConnection(identity);
+    if (!connection) return json(response, 401, { error: "Configure ta clé API dans les paramètres.", code: "connection_required" });
+    const quiz = await generateQuiz(parsed.data, connection);
     return json(response, 200, { quiz }, rateLimitHeaders);
   } catch (error) {
-    console.error("Quiz generation failed", error);
+    console.error("Quiz generation failed");
     return json(response, 503, { error: "Quiz generation is temporarily unavailable." }, rateLimitHeaders);
   }
 }

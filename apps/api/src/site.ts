@@ -355,7 +355,7 @@ export function renderPrivacyPage(): string {
       <h2>Why this data is used</h2>
       <p>The data is sent to the PlotTwist API only to generate a context-aware spoiler quiz, return it in the user's language, cache it locally, and prevent repeated or excessive quiz generation.</p>
       <h2>AI processing and retention</h2>
-      <p>Quiz context is forwarded to the configured language-model provider for generation. PlotTwist does not sell personal data and does not maintain user profiles. The extension stores quiz and delivery state locally in Chrome. The API keeps only short-lived operational rate-limit state in memory and may produce standard hosting logs.</p>
+      <p>Quiz context is forwarded to the provider selected by the user for generation. Each user supplies their own API key. It is stored encrypted on the PlotTwist server, separately for each installation, and can be deleted from the extension settings. The browser stores an installation-scoped connection credential, never the provider API key. PlotTwist does not sell personal data and does not maintain user profiles. The extension stores quiz and delivery state locally in Chrome. The API also keeps short-lived operational rate-limit state in memory and may produce standard hosting logs. Hosting backups follow the operator’s retention policy.</p>
       <h2>Controls</h2>
       <p>Removing the extension deletes its Chrome-managed local data. Users can also clear extension storage from Chrome settings. Do not install PlotTwist if you do not consent to intentional spoilers or the processing described above.</p>
       <h2>Contact</h2>
