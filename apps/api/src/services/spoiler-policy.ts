@@ -22,6 +22,6 @@ export function buildSpoilerPolicy(request: QuizRequest): string {
     `Write every user-facing string in locale ${request.context.locale}.`,
     "Return exactly three distinct and plausible choices.",
     "The reveal must use one or two sentences, restate only the same event and correct choice, and introduce no secondary plot detail.",
-    `Use spoiler intensity ${request.spoilerLevel}: light stays within the current episode, moderate may use a later event in the current season, and advanced may use a major later twist.`
+    `Use spoiler scope ${request.spoilerLevel}: light stays within the current episode and never reveals later episodes, moderate stays within the current season, and advanced may reveal any later event through the end of the same series, including subsequent seasons. For a film, all scopes remain within the current film.`
   ].join(" ");
 }

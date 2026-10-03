@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Paramètres · PlotTwist</title></head>
+  <body>
+    <main class="settings-page">
+      <div class="brand"><img src="/icons/icon-48.png" alt=""><span>PlotTwist</span></div>
+      <h1>Paramètres</h1>
+      <form id="settings-form">
+        <div class="settings-columns">
+          <section aria-labelledby="viewing-title">
+            <h2 id="viewing-title">Lecture</h2>
+            <fieldset class="intensity"><legend>Jusqu’où peut-on te spoiler ?</legend>
+              <div class="segmented">
+                <label><input type="radio" name="spoilerLevel" value="light"><span>Cet épisode</span></label>
+                <label><input type="radio" name="spoilerLevel" value="moderate" checked><span>Cette saison</span></label>
+                <label><input type="radio" name="spoilerLevel" value="advanced"><span>Toute la série</span></label>
+              </div>
+              <p id="intensity-description" class="muted helper">Les révélations peuvent aller jusqu’à la fin de la saison en cours.</p>
+            </fieldset>
+            <div class="reading-rows">
+              <label class="setting-row" for="trigger"><span>Afficher le quiz après</span><span class="select-wrap"><select id="trigger"><option value="60">1 minute</option><option value="120" selected>2 minutes</option><option value="300">5 minutes</option><option value="600">10 minutes</option></select></span></label>
+              <label class="setting-row" for="daily-limit"><span>Limite quotidienne</span><span class="select-wrap"><select id="daily-limit"><option value="1">1 spoiler</option><option value="2">2 spoilers</option><option value="3" selected>3 spoilers</option></select></span></label>
+              <label class="setting-row" for="locale"><span>Langue</span><span class="select-wrap"><select id="locale"><option value="auto">Automatique</option><option value="fr">Français</option><option value="en">English</option></select></span></label>
+            </div>
+            <fieldset class="platforms"><legend>Plateformes</legend>
+              <label class="toggle-row"><span>Netflix</span><input id="netflix" class="switch" type="checkbox" role="switch" checked></label>
+              <label class="toggle-row"><span>Prime Video</span><input id="prime" class="switch" type="checkbox" role="switch" checked></label>
+            </fieldset>
+          </section>
+          <section aria-labelledby="connection-title">
+            <h2 id="connection-title">Connexion IA</h2>
+            <div id="connection-controls">
+              <label class="setting-row" for="provider"><span>Fournisseur</span><span class="select-wrap"><select id="provider"><option value="openai">Chargement…</option></select></span></label>
+              <div class="setting-row"><label for="api-key">Ta clé API</label><div class="key-control"><input id="api-key" type="password" autocomplete="new-password" placeholder="Ajouter ta clé" maxlength="1000"><span class="tooltip-wrap"><button id="replace-key" type="button" class="icon-button" aria-label="Remplacer la clé API"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.8L21 8"/><path d="M21 3v5h-5"/></svg></button><span class="tooltip" role="tooltip">Remplacer la clé API</span></span></div></div>
+              <label class="setting-row" for="model"><span>Modèle</span><span class="select-wrap"><select id="model" aria-describedby="model-note"><option value="">Choisir un modèle</option></select></span></label>
+              <div class="connection-actions"><p id="model-note" class="muted helper">Les modèles suggérés sont vérifiés avec ta clé API.</p><button type="button" id="test-connection" class="text-button">Tester la connexion</button><p class="muted helper">Ta clé est chiffrée chez PlotTwist. Les frais d’utilisation sont facturés par ton fournisseur.</p></div>
+            </div>
+            <p id="connection-status" class="feedback" role="status" aria-live="polite"></p>
+            <details class="disclosure"><summary>Données locales<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="disclosure-content data-actions"><button type="button" id="delete-key" class="text-button">Supprimer ma clé API</button><button type="button" id="clear-cache" class="text-button">Vider les quiz en cache</button><button type="button" id="clear-history" class="text-button">Effacer l’historique local</button><p class="muted helper">Effacer l’historique permet de revoir un spoiler. Le compteur du jour est conservé.</p><button type="button" id="reset-settings" class="text-button">Rétablir les réglages par défaut</button></div>
+            </details>
+          </section>
+        </div>
+        <div class="save-row"><p id="save-status" class="feedback" role="status" aria-live="polite"></p><button id="save" class="button primary" type="submit" disabled>Enregistrer</button></div>
+      </form>
+    </main>
+    <script type="module" src="/src/settings/options.ts"></script>
+  </body>
+</html>

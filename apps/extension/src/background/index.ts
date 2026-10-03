@@ -2,8 +2,10 @@ import { buildEpisodeKey } from "../shared/episode-key";
 import { MAX_DAILY_SPOILERS } from "../shared/limits";
 import type { Quiz, QuizEligibility, QuizErrorCode, QuizRequest } from "../shared/quiz";
 import type { ViewingContext } from "../shared/viewing-context";
+import { DEFAULT_API_URL, loadSettings, SETTINGS_KEY, QUIZ_CONFIG_REVISION_KEY } from "../shared/settings";
+import { handleConnectionMessage, connectionCredential, type ConnectionMessage } from "./connection";
+const storageReady = chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787/v1/quiz";
 const CONTEXT_KEY = "activeViewingContext";
 const DELIVERY_STATE_KEY = "quizDeliveryState:v2";
 const LEGACY_DELIVERY_STATE_KEY = "quizDeliveryState:v1";
@@ -16,7 +18,7 @@ type DeliveryState = {
 };
 
 type BackgroundMessage = {
-  type?: "VIEWING_CONTEXT_UPDATED" | "CHECK_QUIZ_ELIGIBILITY" | "CLAIM_QUIZ_PRESENTATION" | "REQUEST_QUIZ";
+  type?: string;
   context?: ViewingContext;
   request?: QuizRequest;
 };
@@ -60,11 +62,11 @@ async function getState(): Promise<DeliveryState> {
   return migrated;
 }
 
-function getEligibility(state: DeliveryState, episodeKey: string): QuizEligibility {
+function getEligibility(state: DeliveryState, episodeKey: string, dailyLimit = MAX_DAILY_SPOILERS): QuizEligibility {
   if (state.spoiledEpisodeKeys.includes(episodeKey)) {
     return { eligible: false, reason: "episode_already_spoiled" };
   }
-  if (state.dailyCount >= MAX_DAILY_SPOILERS) {
+  if (state.dailyCount >= dailyLimit) {
     return { eligible: false, reason: "daily_limit_reached" };
   }
   return { eligible: true };
@@ -102,14 +104,18 @@ function isQuiz(value: unknown): value is Quiz {
 
 async function fetchQuiz(request: QuizRequest, installationId: string): Promise<QuizResult> {
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(DEFAULT_API_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${await connectionCredential()}`,
         "X-PlotTwist-Client-Id": installationId
       },
       body: JSON.stringify(request)
     });
+    if (response.status === 401) return { error: "connection_required" };
     if (response.status === 429) return { error: "rate_limited" };
     if (!response.ok) return { error: "unavailable" };
     const payload = await response.json() as { quiz?: unknown };
@@ -122,11 +128,14 @@ async function fetchQuiz(request: QuizRequest, installationId: string): Promise<
 async function prepareQuiz(request: QuizRequest): Promise<QuizResult> {
   return withStorageLock(async () => {
     const episodeKey = buildEpisodeKey(request.context);
+    const settings = await loadSettings();
+    if (!settings.enabled || !settings.platforms[request.context.platform]) return { error: "disabled" };
     const state = await getState();
-    const eligibility = getEligibility(state, episodeKey);
+    const eligibility = getEligibility(state, episodeKey, settings.dailyLimit);
     if (!eligibility.eligible) return { error: eligibility.reason };
 
-    const cacheKey = `quiz:v2:${episodeKey}:${request.context.locale}`;
+    request = { ...request, spoilerLevel: settings.spoilerLevel, context: { ...request.context, locale: settings.locale === "auto" ? request.context.locale : settings.locale } };
+    const cacheKey = `quiz:v3:${episodeKey}:${request.context.locale}:${settings.spoilerLevel}:${settings.triggerSeconds}:${DEFAULT_API_URL}`;
     const cached = await chrome.storage.local.get(cacheKey);
     let quiz = isQuiz(cached[cacheKey]) ? cached[cacheKey] : undefined;
     if (!quiz) {
@@ -145,7 +154,9 @@ async function claimQuizPresentation(context: ViewingContext): Promise<QuizEligi
   return withStorageLock(async () => {
     const episodeKey = buildEpisodeKey(context);
     const state = await getState();
-    const eligibility = getEligibility(state, episodeKey);
+    const settings = await loadSettings();
+    if (!settings.enabled || !settings.platforms[context.platform]) return { eligible: false, reason: "disabled" };
+    const eligibility = getEligibility(state, episodeKey, settings.dailyLimit);
     if (!eligibility.eligible) return eligibility;
 
     state.spoiledEpisodeKeys = [...new Set([...state.spoiledEpisodeKeys, episodeKey])];
@@ -155,16 +166,65 @@ async function claimQuizPresentation(context: ViewingContext): Promise<QuizEligi
   });
 }
 
-chrome.runtime.onMessage.addListener((message: BackgroundMessage) => {
+async function handleMessage(message: BackgroundMessage & ConnectionMessage, sender: chrome.runtime.MessageSender): Promise<unknown> {
+  await storageReady;
+  const trusted = sender.id === chrome.runtime.id && Boolean(sender.url?.startsWith(chrome.runtime.getURL("")));
+  if (message.type?.startsWith("CONNECTION_")) {
+    if (!trusted) throw new Error("Accès refusé.");
+    if (["CONNECTION_SAVE", "CONNECTION_DELETE"].includes(message.type)) return withStorageLock(async () => {
+      const result = await handleConnectionMessage(message);
+      const stored = await chrome.storage.local.get(null);
+      await chrome.storage.local.remove(Object.keys(stored).filter((key) => key.startsWith("quiz:")));
+      await chrome.storage.local.set({ [QUIZ_CONFIG_REVISION_KEY]: crypto.randomUUID() });
+      return result;
+    });
+    return handleConnectionMessage(message);
+  }
+  if (message.type === "GET_PREFERENCES") return loadSettings();
+  if (message.type === "GET_POPUP_STATE" && trusted) return withStorageLock(async () => ({ dailyCount: (await getState()).dailyCount }));
+  if (message.type === "CLEAR_LOCAL_DATA" && trusted) {
+    return withStorageLock(async () => {
+      const all = await chrome.storage.local.get(null);
+      const keys = Object.keys(all).filter((key) => key.startsWith("quiz:"));
+      await chrome.storage.local.remove(keys);
+      if ((message as unknown as { history?: boolean }).history) {
+        const state = await getState();
+        await chrome.storage.local.set({ [DELIVERY_STATE_KEY]: { ...state, spoiledEpisodeKeys: [] } });
+        await chrome.storage.local.remove(LEGACY_DELIVERY_STATE_KEY);
+      }
+      return { ok: true };
+    });
+  }
   if (message.type === "VIEWING_CONTEXT_UPDATED" && message.context) {
     return chrome.storage.session.set({ [CONTEXT_KEY]: message.context });
   }
   if (message.type === "CHECK_QUIZ_ELIGIBILITY" && message.context) {
-    return withStorageLock(async () => getEligibility(await getState(), buildEpisodeKey(message.context!)));
+    return withStorageLock(async () => {
+      const settings = await loadSettings();
+      if (!settings.enabled || !settings.platforms[message.context!.platform]) return { eligible: false, reason: "disabled" };
+      return getEligibility(await getState(), buildEpisodeKey(message.context!), settings.dailyLimit);
+    });
   }
   if (message.type === "CLAIM_QUIZ_PRESENTATION" && message.context) {
     return claimQuizPresentation(message.context);
   }
   if (message.type === "REQUEST_QUIZ" && message.request) return prepareQuiz(message.request);
   return undefined;
+}
+
+// Callback responses also work on Chrome versions predating Promise listeners.
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  void handleMessage(message, sender).then(respond).catch((error) => respond({ error: error instanceof Error ? error.message : "Service indisponible." }));
+  return true;
+});
+
+// Only sanitized preferences are shared with streaming-page scripts.
+void chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || (!changes[SETTINGS_KEY] && !changes[QUIZ_CONFIG_REVISION_KEY])) return;
+  void loadSettings().then(async (settings) => {
+    const tabs = await chrome.tabs.query({ url: ["https://*.netflix.com/*", "https://*.primevideo.com/*"] });
+    await Promise.allSettled(tabs.filter(tab => tab.id !== undefined).map(tab => chrome.tabs.sendMessage(tab.id!, { type: "PREFERENCES_CHANGED", settings })));
+  });
 });

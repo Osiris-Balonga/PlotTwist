@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="fr" class="popup-root">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PlotTwist</title></head>
+  <body class="popup-body">
+    <main class="popup">
+      <div class="brand"><img src="/icons/icon-48.png" alt=""><span>PlotTwist</span></div>
+      <label class="toggle-row popup-toggle"><span>Activer PlotTwist</span><input id="enabled" class="switch" type="checkbox" role="switch" disabled></label>
+      <p id="daily-count" class="muted popup-count" aria-live="polite">Chargement…</p>
+      <button id="open-settings" class="button secondary popup-settings">Paramètres</button>
+      <p id="popup-status" class="feedback" role="status" hidden></p>
+    </main>
+    <script type="module" src="/src/settings/popup.ts"></script>
+  </body>
+</html>
